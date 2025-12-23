@@ -1,0 +1,6 @@
+env
+venv
+.env
+py_dst
+__pycache__
+*.json
