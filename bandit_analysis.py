@@ -1,8 +1,10 @@
 import subprocess
 import json
 import logging
+import tempfile
+import os
 
-def analyze_code_with_bandit(file_path: str):
+def analyze_code(file_path: str):
     try:
         result = subprocess.run(
             ["bandit", "-r", file_path, "-f", "json", "--exit-zero"], 
@@ -30,3 +32,32 @@ def analyze_code_with_bandit(file_path: str):
             })
             
     return extracted_issues
+
+def verify_patch(code_content: str, original_test_id: str) -> bool:
+    is_patched = False
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
+        temp_file.write(code_content)
+        temp_path = temp_file.name
+    try:
+        cmd = ["bandit", "-r", temp_path, "-f", "json", "--exit-zero"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        try:
+            data = json.loads(result.stdout)
+            issues_found = [
+                i.get("test_id") for i in data.get("results", []) 
+                if i.get("test_id") == original_test_id
+            ]
+            if not issues_found:
+                is_patched = True
+            else:
+                is_patched = False
+                
+        except json.JSONDecodeError:
+            is_patched = False
+
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+    return is_patched
