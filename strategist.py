@@ -36,7 +36,4 @@ def vuln_strategist(state: GraphState):
         })
 
         processed_vulns.append({"strategy" : strategy_text, "test_id" : vuln["bandit_otpt"]["test_id"]})
-    print(processed_vulns)
-    print()
-    print()
     return {"processed_vulnerabilities": processed_vulns}

@@ -6,7 +6,6 @@ from schema import GraphState
 
 def small_patcher(state: GraphState):
     vulnerabilities = state['processed_vulnerabilities']
-    print(vulnerabilities)
     patch_results = []    
     llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
 
@@ -29,10 +28,9 @@ def small_patcher(state: GraphState):
     
     chain = patch_prompt | llm | StrOutputParser()
     
-    print(f"--- Attempting Level 1 Patch (Small LLM) for {len(vulnerabilities)} issues ---")
+    print(f"Attempting Level 1 Patch (Small LLM) for {len(vulnerabilities)} issues")
 
     for vuln in vulnerabilities:
-        # print(vuln)
         strategy,test_id = vuln["strategy"],vuln["test_id"]
         print(test_id)
         try:
@@ -40,13 +38,8 @@ def small_patcher(state: GraphState):
                 "code_snippet": state['code'],
                 "fix_strategy": strategy
             })
-            
-            # Clean up formatting (sometimes LLMs wrap in ```python ... ```)
             fixed_code = fixed_code.replace("```python", "").replace("```", "").strip()
-
-            # 2. Verify Patch
-            is_fixed = verify_patch(fixed_code, test_id)
-            
+            is_fixed = verify_patch(fixed_code, test_id)         
             status = "success" if is_fixed else "failed_level_1"
             print(f"Issue {test_id}: {status}")
 

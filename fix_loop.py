@@ -12,7 +12,6 @@ curr_file = "py_dst/sample_0.py"
 
 load_dotenv()
 bandit_analysis = analyze_code(curr_file)
-print(bandit_analysis)
 vuln_notes = []
 
 def load_code(file_path: str) -> str:
