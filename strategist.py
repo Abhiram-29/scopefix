@@ -1,10 +1,12 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from slicing import CodeManager
 from schema import GraphState
 
 def vuln_strategist(state: GraphState):
     vulns = state["raw_vulnerabilities"]
+    code = CodeManager(state["code"])
     processed_vulns = []
 
     llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
@@ -29,11 +31,15 @@ def vuln_strategist(state: GraphState):
     chain = strat_prompt | llm | StrOutputParser()
 
     for vuln in vulns:
+        # print(vuln["bandit_otpt"])
+        line_num = vuln["bandit_otpt"]["line_range"][0]
+        print(line_num)
+        print(code.get_function_context(line_num))
         strategy_text = chain.invoke({
             "bandit_otpt": vuln["bandit_otpt"],
             "scraped": vuln["scraped"],
-            "code" : state["code"]
+            "code" : code.get_function_context(line_num)
         })
 
-        processed_vulns.append({"strategy" : strategy_text, "test_id" : vuln["bandit_otpt"]["test_id"]})
+        processed_vulns.append({"strategy" : strategy_text, "test_id" : vuln["bandit_otpt"]["test_id"], "line_num": line_num})
     return {"processed_vulnerabilities": processed_vulns}

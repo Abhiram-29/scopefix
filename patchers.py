@@ -1,6 +1,7 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from slicing import CodeManager
 from bandit_analysis import verify_patch
 from functools import partial
 from schema import GraphState
@@ -8,7 +9,7 @@ from schema import GraphState
 def patching_logic(state: GraphState, model: str, level: int, patch_prompt: ChatPromptTemplate):
     vulnerabilities = state['processed_vulnerabilities']
     patch_results = state.get("patch_results",[])
-    curr_code = state["code"]
+    curr_code = CodeManager(state["code"])
     leftover_vulnerabilities = []    
     llm = ChatGoogleGenerativeAI(model=model)
    
@@ -17,17 +18,19 @@ def patching_logic(state: GraphState, model: str, level: int, patch_prompt: Chat
     print(f"Attempting Level {level} Patch (Small LLM) for {len(vulnerabilities)} issues")
 
     for vuln in vulnerabilities:
-        strategy,test_id = vuln["strategy"],vuln["test_id"]
+        strategy,test_id,line_num = vuln["strategy"],vuln["test_id"],vuln["line_num"]
         print(test_id)
+        affected_code_slice = curr_code.get_function_context(line_num)
         try:
-            fixed_code = chain.invoke({
-                "code_snippet": curr_code,
+            fixed_code_snippet = chain.invoke({
+                "code_snippet": affected_code_slice["code"],
                 "fix_strategy": strategy
             })
-            fixed_code = fixed_code.replace("```python", "").replace("```", "").strip()
-            is_fixed = verify_patch(fixed_code, test_id)         
+            fixed_code_snippet = fixed_code_snippet.replace("```python", "").replace("```", "").strip()
+            curr_code.apply_patch(fixed_code_snippet,affected_code_slice["start_line"],affected_code_slice["end_line"])
+            is_fixed = verify_patch(curr_code.full_code, test_id)         
             if is_fixed:
-                curr_code = fixed_code
+                pass
             else:
                 leftover_vulnerabilities.append(vuln)
             
@@ -35,7 +38,7 @@ def patching_logic(state: GraphState, model: str, level: int, patch_prompt: Chat
             print(f"Issue {test_id}: {status}")
 
             patch_results.append({
-                "patched_code": fixed_code,
+                "patched_code": fixed_code_snippet,
                 "status": status,
                 "level_attempted": level
             })
@@ -48,14 +51,15 @@ def patching_logic(state: GraphState, model: str, level: int, patch_prompt: Chat
                 "level": level
             })
 
-    return {"patch_results": patch_results, "processed_vulnerabilities": leftover_vulnerabilities, "code": curr_code}
+    return {"patch_results": patch_results, "processed_vulnerabilities": leftover_vulnerabilities, "code": curr_code.full_code}
 
 
 
 l1_patch_prompt = ChatPromptTemplate.from_template(
         """
-        You are a cybersecurity specialist. Given a vulnerable code your job is to fix it without changing its functionality.
+        You are a cybersecurity specialist. Given a vulnerable code snippet your job is to fix it without changing its functionality.
         You will be given an explaination of the vulnerability and a strategy to fix it, use the strategy as a guideline to fix the code.
+        Assume any external functions used are implemented correctly in the codebase
         
         VULNERABLE CODE:
         {code_snippet}
@@ -74,9 +78,9 @@ junior_patcher = partial(patching_logic, model="gemini-3-flash-preview", level=1
 l2_patch_prompt = ChatPromptTemplate.from_template(
     """
     You are a senior cybersecurity specialist. Your job is to patch vulnerable codes that your juniors failed to patch.
-    You will be given a code, an explanation of the vulnerability and a strategy to fix it, patch the code without changing its functionality.
+    You will be given a code snippet, an explanation of the vulnerability and a strategy to fix it, patch the code without changing its functionality.
     Your juniors tried to patch the code using the same strategy but they failed, so think critically and use your own creativity, you can deviate from the strategy
-
+    Assume any external functions used are implemented correctly in the codebase
     VULNERABLE CODE:
     {code_snippet}
 

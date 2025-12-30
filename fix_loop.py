@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-curr_file = "py_dst/sample_10.py"
+curr_file = "py_dst/sample_35.py"
 
 load_dotenv()
 bandit_analysis = analyze_code(curr_file)
