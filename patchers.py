@@ -1,31 +1,39 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_gradient import ChatGradient
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from slicing import CodeManager
 from bandit_analysis import verify_patch
 from functools import partial
-from schema import GraphState
+from schema import GraphState, PatchResults
+import os
+import time
 
 def patching_logic(state: GraphState, model: str, level: int, patch_prompt: ChatPromptTemplate):
     vulnerabilities = state['processed_vulnerabilities']
     patch_results = state.get("patch_results",[])
     curr_code = CodeManager(state["code"])
     leftover_vulnerabilities = []    
-    llm = ChatGoogleGenerativeAI(model=model)
+    # llm = ChatGoogleGenerativeAI(model=model,temperature=0)
+    llm = ChatGradient(model= model,api_key=os.environ.get("DIGITALOCEAN_INFERENCE_KEY"))
    
-    chain = patch_prompt | llm | StrOutputParser()
+    chain = patch_prompt | llm 
     
     print(f"Attempting Level {level} Patch (Small LLM) for {len(vulnerabilities)} issues")
 
     for vuln in vulnerabilities:
         strategy,test_id,line_num = vuln["strategy"],vuln["test_id"],vuln["line_num"]
-        print(test_id)
+        # print(test_id)
         affected_code_slice = curr_code.get_function_context(line_num)
         try:
-            fixed_code_snippet = chain.invoke({
+            llm_start_time = time.perf_counter()
+            llm_response = chain.invoke({
                 "code_snippet": affected_code_slice["code"],
                 "fix_strategy": strategy
             })
+            llm_end_time = time.perf_counter()
+            fixed_code_snippet = llm_response.content
+            # print(fixed_code_snippet)
             fixed_code_snippet = fixed_code_snippet.replace("```python", "").replace("```", "").strip()
             curr_code.apply_patch(fixed_code_snippet,affected_code_slice["start_line"],affected_code_slice["end_line"])
             is_fixed = verify_patch(curr_code.full_code, test_id)         
@@ -36,21 +44,33 @@ def patching_logic(state: GraphState, model: str, level: int, patch_prompt: Chat
             
             status = "success" if is_fixed else f"failed_level_{level}"
             print(f"Issue {test_id}: {status}")
-
-            patch_results.append({
-                "patched_code": fixed_code_snippet,
-                "status": status,
-                "level_attempted": level
-            })
+            # print(llm_response.response_metadata["token_usage"],type(llm_response.response_metadata["token_usage"]))
+            patch_results.append(PatchResults(
+                model= model,
+                status= status,
+                level_attempted= level,
+                finish_reason= llm_response.response_metadata["finish_reason"],
+                token_usage= llm_response.response_metadata["token_usage"],
+                vulnerability_id= test_id,
+                llm_time_taken=llm_end_time-llm_start_time,
+                severity=vuln["severity"],
+                confidence=vuln["confidence"]
+            ))
             
         except Exception as e:
             print(f"Error patching {test_id}: {e}")
-            patch_results.append({
-                "status": "error",
-                "error_msg": str(e),
-                "level": level
-            })
-
+            patch_results.append(PatchResults(
+                model= model,
+                status= "error",
+                level_attempted= level,
+                finish_reason= str(e),  
+                token_usage= {"total":0},
+                vulnerability_id= test_id,
+                llm_time_taken= 0,
+                severity=vuln["severity"],
+                confidence=vuln["confidence"]
+            ))
+    # print(patch_results)
     return {"patch_results": patch_results, "processed_vulnerabilities": leftover_vulnerabilities, "code": curr_code.full_code}
 
 
@@ -73,7 +93,7 @@ l1_patch_prompt = ChatPromptTemplate.from_template(
         """
     )
 
-junior_patcher = partial(patching_logic, model="gemini-3-flash-preview", level=1, patch_prompt=l1_patch_prompt)
+junior_patcher = partial(patching_logic, model="alibaba-qwen3-32b", level=1, patch_prompt=l1_patch_prompt)
 
 l2_patch_prompt = ChatPromptTemplate.from_template(
     """
@@ -93,4 +113,4 @@ l2_patch_prompt = ChatPromptTemplate.from_template(
     """
 )
 
-senior_patcher = partial(patching_logic, model="gemini-3-pro-preview", level=2, patch_prompt=l2_patch_prompt)
+senior_patcher = partial(patching_logic, model='deepseek-r1-distill-llama-70b', level=2, patch_prompt=l2_patch_prompt)

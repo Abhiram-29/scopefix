@@ -1,15 +1,18 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_gradient import ChatGradient
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from slicing import CodeManager
 from schema import GraphState
+import os
 
 def vuln_strategist(state: GraphState):
     vulns = state["raw_vulnerabilities"]
     code = CodeManager(state["code"])
     processed_vulns = []
 
-    llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
+    # llm = ChatGoogleGenerativeAI(model="gemini-3-flash-preview")
+    llm = ChatGradient(model="alibaba-qwen3-32b",api_key=os.environ.get("DIGITALOCEAN_INFERENCE_KEY"))
     strat_prompt = ChatPromptTemplate.from_template(
         """
         You are a Senior Cybersecurity analyst, you will be given a python code ,its vulnerability and the output of bandit code analyzer. 
@@ -33,13 +36,18 @@ def vuln_strategist(state: GraphState):
     for vuln in vulns:
         # print(vuln["bandit_otpt"])
         line_num = vuln["bandit_otpt"]["line_range"][0]
-        print(line_num)
-        print(code.get_function_context(line_num))
+        # print(line_num)
+        # print(code.get_function_context(line_num))
         strategy_text = chain.invoke({
             "bandit_otpt": vuln["bandit_otpt"],
             "scraped": vuln["scraped"],
             "code" : code.get_function_context(line_num)
         })
 
-        processed_vulns.append({"strategy" : strategy_text, "test_id" : vuln["bandit_otpt"]["test_id"], "line_num": line_num})
+        processed_vulns.append({"strategy" : strategy_text,
+                                "test_id" : vuln["bandit_otpt"]["test_id"],
+                                "line_num": line_num,
+                                "severity":vuln["bandit_otpt"]["issue_severity"],
+                                "confidence": vuln["bandit_otpt"]["issue_confidence"]
+                                })
     return {"processed_vulnerabilities": processed_vulns}

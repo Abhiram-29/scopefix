@@ -3,6 +3,10 @@ import json
 import logging
 import tempfile
 import os
+from pathlib import Path
+
+def load_code(file_path: str) -> str:
+    return Path(file_path).read_text(encoding="utf-8")
 
 def analyze_code(file_path: str):
     try:
