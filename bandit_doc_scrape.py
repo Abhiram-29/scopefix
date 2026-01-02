@@ -16,7 +16,7 @@ def scrape_bandit_docs(url: str):
         headings = "\n".join(tag.get_text(strip=True) for tag in allowed_tags)
         content = paragraphs+headings
         if content:
-            print('content section returned')
+            # print('content section returned')
             return content
     except Exception as e:
         return f"Failed to scrape Bandit docs: {str(e)}"

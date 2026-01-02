@@ -78,6 +78,8 @@ class SecuritySummary(BaseModel):
     fixed_count: int
     new_issues_introduced: int
     final_code_stats: CodeStats 
+    normalized_loc_churn: int = 0
+    ast_churn: int = 0
 
 class FileAuditLog(BaseModel):
     meta: MetaInfo

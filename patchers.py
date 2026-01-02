@@ -19,7 +19,7 @@ def patching_logic(state: GraphState, model: str, level: int, patch_prompt: Chat
    
     chain = patch_prompt | llm 
     
-    print(f"Attempting Level {level} Patch (Small LLM) for {len(vulnerabilities)} issues")
+    print(f"Attempting Level {level} Patch {model} for {len(vulnerabilities)} issues")
 
     for vuln in vulnerabilities:
         strategy,test_id,line_num = vuln["strategy"],vuln["test_id"],vuln["line_num"]
@@ -36,6 +36,16 @@ def patching_logic(state: GraphState, model: str, level: int, patch_prompt: Chat
             # print(fixed_code_snippet)
             fixed_code_snippet = fixed_code_snippet.replace("```python", "").replace("```", "").strip()
             curr_code.apply_patch(fixed_code_snippet,affected_code_slice["start_line"],affected_code_slice["end_line"])
+            if len(curr_code.full_code) == 0:
+                print("****************")
+                print("Code wipeout error")
+                print(affected_code_slice)
+                print(fixed_code_snippet)
+                print(llm_response)
+                print("*************************")
+                print()
+                print()
+                print()
             is_fixed = verify_patch(curr_code.full_code, test_id)         
             if is_fixed:
                 pass
