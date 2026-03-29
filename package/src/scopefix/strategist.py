@@ -1,9 +1,8 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_gradient import ChatGradient
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from slicing import CodeManager
-from schema import GraphState
+from .slicing import CodeManager
+from .schema import GraphState
 import os
 
 def vuln_strategist(state: GraphState):

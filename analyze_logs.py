@@ -8,7 +8,7 @@ def analyze_logs(log_file_path: str):
             for line in f:
                 if line.strip(): data.append(json.loads(line))
     except FileNotFoundError:
-        print(f"Error: File '{log_file_path}' not found.")
+        print(f" Error: File '{log_file_path}' not found.")
         return
 
     df_files = pd.json_normalize(data)
@@ -23,30 +23,26 @@ def analyze_logs(log_file_path: str):
         print("No valid data to analyze.")
         return
 
-    valid_file_ids = df_files['meta.file_uid'].unique()
     
-    all_attempts = []
     all_vulns = []
-    
-    for entry in data:
-        if entry['meta']['file_uid'] not in valid_file_ids: continue
+    for idx,entry in df_files.iterrows():
             
         for v in entry['vulnerabilities']:
+
+            cum_tokens = sum(att['tokens']['total_tokens'] for att in v['attempts'])
+            cum_cost = sum(att['cost_usd'] for att in v['attempts'])
+            
             all_vulns.append({
                 "test_id": v['test_id'],
                 "severity": v['severity'],
-                "status": v['status']
+                "status": v['status'],
+                "fixed_at_level": v.get('fixed_at_level'), 
+                "cumulative_tokens": cum_tokens,
+                "cumulative_cost": cum_cost
             })
-            for att in v['attempts']:
-                all_attempts.append({
-                    "level": att['level'],
-                    "status": att['status'],
-                    "total_tokens": att['tokens']['total_tokens']
-                })
                 
-    df_attempts = pd.DataFrame(all_attempts)
     df_vulns = pd.DataFrame(all_vulns)
-
+   
     total_detected = df_files['input_stats.vuln_count'].sum()
     total_fixed = df_files['security_summary.fixed_count'].sum()
     remediated_files = df_files[
@@ -58,20 +54,41 @@ def analyze_logs(log_file_path: str):
     print(f"File Remediation Rate:    {(len(remediated_files) / len(df_files) * 100):.2f}% ({len(remediated_files)}/{len(df_files)} files clean)")
 
     print(f"\n=== 2. TIERED ARCHITECTURE EFFICIENCY ===")
-    for level in [1, 2]:
-        subset = df_attempts[df_attempts['level'] == level]
-        if not subset.empty:
-            success = len(subset[subset['status'] == 'SUCCESS'])
-            print(f"Level {level} Success Rate:    {(success/len(subset)*100):.2f}% ({success}/{len(subset)})")
-        else:
-            print(f"Level {level} Success Rate:    N/A (No attempts)")
-
-    avg_tokens = df_attempts[df_attempts['status'] == 'SUCCESS']['total_tokens'].mean()
-    avg_cost_fix = df_files['total_cost_usd'].sum() / total_fixed if total_fixed > 0 else 0
     
-    print(f"\n=== 3. COST METRICS ===")
-    print(f"Avg Tokens per Fix:       {avg_tokens:.0f}")
-    print(f"Avg Cost per Fix (CPF):   ${avg_cost_fix:.4f}")
+
+    l1_fixed = df_vulns[df_vulns['fixed_at_level'] == 1]
+    l1_count = len(l1_fixed)
+    l1_avg_cost = l1_fixed['cumulative_cost'].mean() if l1_count else 0
+    l1_avg_tokens = l1_fixed['cumulative_tokens'].mean() if l1_count else 0
+    l1_success_rate = (l1_count /len(df_vulns)) * 100 if len(df_vulns) else 0
+
+
+    l2_fixed = df_vulns[df_vulns['fixed_at_level'] == 2]
+    l2_count = len(l2_fixed)
+    l2_avg_cost = l2_fixed['cumulative_cost'].mean() if l2_count else 0
+    l2_avg_tokens = l2_fixed['cumulative_tokens'].mean() if l2_count else 0
+    l2_success_rate = (l2_count /(len(df_vulns)-l1_count)) * 100 if len(df_vulns) else 0
+ 
+    print(f"{'Level':<8} | {'Count':<5} | {'Avg Tokens (Cum)':<18} | {'Avg Cost (Cum)'}")
+    print("-" * 55)
+    print(f"{'Level 1':<8} | {l1_count:<5} | {l1_avg_tokens:<18.0f} | ${l1_avg_cost:.4f}")
+    print(f"{'Level 2':<8} | {l2_count:<5} | {l2_avg_tokens:<18.0f} | ${l2_avg_cost:.4f}")
+    print(f"\nSuccess Rates: Level 1: {l1_success_rate:.2f}%, Level 2: {l2_success_rate:.2f}%")
+    if l2_count > 0:
+        multiplier = l2_avg_cost / l1_avg_cost if l1_avg_cost > 0 else 0
+        print(f"\nInsight: Level 2 fixes are {multiplier:.1f}x more expensive than Level 1 fixes.")
+
+    total_experiment_cost = df_files['total_cost_usd'].sum()
+    
+
+    avg_file_cost = df_files['total_cost_usd'].mean()
+
+    avg_cost_per_fix = total_experiment_cost / total_fixed if total_fixed > 0 else 0
+
+    print(f"\n=== 3. FINANCIAL SUMMARY ===")
+    print(f"Avg Total Cost per File:  ${avg_file_cost:.4f} (Sum of all vulns per file)")
+    print(f"Avg Cost per Fix (CPF):   ${avg_cost_per_fix:.4f} (Total Spend / Total Fixes)")
+    print(f"Total Experiment Cost:    ${total_experiment_cost:.4f}")
 
     print(f"\n=== 4. PATCH QUALITY ===")
     
@@ -93,17 +110,13 @@ def analyze_logs(log_file_path: str):
     ).mean()
     print(f"Avg Complexity Change:    {avg_cc_delta:+.2f}")
 
-    print(f"\n=== 5. PERFORMANCE BY SEVERITY ===")
-    if not df_vulns.empty:
-        breakdown = df_vulns.groupby('severity')['status'].value_counts(normalize=True).unstack().fillna(0)
-        if 'FIXED' in breakdown.columns:
-            print((breakdown['FIXED'] * 100).round(2).to_string(float_format="%.2f%%"))
-        else:
-            print("No fixed vulnerabilities to display.")
-    else:
-        print("No vulnerability data found.")
+    avg_new_vulns_introduced = df_files['security_summary.new_issues_introduced'].mean()
+    print(f"Avg New Vulns Introduced: {avg_new_vulns_introduced:.5f} per file")
+    per_new_vuln_rate = df_files[df_files["security_summary.new_issues_introduced"] > 0].shape[0] / df_files.shape[0] * 100
+    print(f"Percentage of files with New Vulns:     {per_new_vuln_rate:.2f}% ")
+    print(df_files["security_summary.new_issues_introduced"].value_counts())
 
-    print(f"\n=== 6. DETAILED SUCCESS RATE BY VULNERABILITY ID ===")
+    print(f"\n=== 5. SUCCESS RATE BY VULNERABILITY ID ===")
     if not df_vulns.empty:
         df_vulns['is_fixed'] = (df_vulns['status'] == 'FIXED').astype(int)
         
@@ -119,8 +132,8 @@ def analyze_logs(log_file_path: str):
         print("-" * 40)
         for test_id, row in stats.iterrows():
             print(f"{test_id:<20} | {row['success_rate']}%   | {int(row['total_cases']):<5}")
-    else:
-        print("No vulnerabilities found.")
 
+# --- RUN ---
 if __name__ == "__main__":
+    # Update filename as needed
     analyze_logs("test_logs.jsonl")

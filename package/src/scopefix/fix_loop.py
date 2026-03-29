@@ -1,14 +1,12 @@
-from bandit_analysis import analyze_code, load_code
-from bandit_doc_scrape import scrape_bandit_docs
-from strategist import vuln_strategist
-from schema import GraphState
+from .bandit_analysis import analyze_code, load_code
+from .bandit_doc_scrape import scrape_bandit_docs
+from .strategist import vuln_strategist
+from .schema import GraphState
 from langgraph.graph import StateGraph, START, END
-from patchers import junior_patcher, senior_patcher
+from .patchers import junior_patcher, senior_patcher
 from dotenv import load_dotenv
 import re
 from typing import Literal
-import time
-from logger import create_log
 
 curr_file = "py_dst/sample_0.py"
 
@@ -48,7 +46,7 @@ def fix_vuln(file_path):
         )
         vuln.pop('more_info_url',None)
         vuln_notes.append({"scraped":scrape_bandit_docs(updt_bandit_url),"bandit_otpt":vuln})
-    py_code = load_code(curr_file)
+    py_code = load_code(file_path)
     res=app.invoke({"raw_vulnerabilities":vuln_notes, "code":py_code})
     
     return res

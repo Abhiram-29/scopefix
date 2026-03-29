@@ -1,11 +1,9 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_gradient import ChatGradient
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from slicing import CodeManager
-from bandit_analysis import verify_patch
+from .slicing import CodeManager
+from .bandit_analysis import verify_patch
 from functools import partial
-from schema import GraphState, PatchResults
+from .schema import GraphState, PatchResults
 import os
 import time
 
@@ -89,7 +87,8 @@ l1_patch_prompt = ChatPromptTemplate.from_template(
         """
         You are a cybersecurity specialist. Given a vulnerable code snippet your job is to fix it without changing its functionality.
         You will be given an explaination of the vulnerability and a strategy to fix it, use the strategy as a guideline to fix the code.
-        Assume any external functions used are implemented correctly in the codebase
+        Assume any external functions used are implemented correctly in the codebase.
+        Only fix the vulnerability, do not change any other part of the code. Don't add any comments, error handling or logging unless it is part of the fix strategy.
         
         VULNERABLE CODE:
         {code_snippet}
@@ -111,6 +110,7 @@ l2_patch_prompt = ChatPromptTemplate.from_template(
     You will be given a code snippet, an explanation of the vulnerability and a strategy to fix it, patch the code without changing its functionality.
     Your juniors tried to patch the code using the same strategy but they failed, so think critically and use your own creativity, you can deviate from the strategy
     Assume any external functions used are implemented correctly in the codebase
+    Only fix the vulnerability, do not change any other part of the code. Don't add any comments, error handling or logging unless it is part of the fix strategy.
     VULNERABLE CODE:
     {code_snippet}
 
@@ -123,4 +123,4 @@ l2_patch_prompt = ChatPromptTemplate.from_template(
     """
 )
 
-senior_patcher = partial(patching_logic, model='deepseek-r1-distill-llama-70b', level=2, patch_prompt=l2_patch_prompt)
+senior_patcher = partial(patching_logic, model='kimi-k2.5', level=2, patch_prompt=l2_patch_prompt)
